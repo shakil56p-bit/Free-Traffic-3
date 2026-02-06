@@ -1,11 +1,14 @@
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;600;700&family=Orbitron:wght@700&display=swap');
 
 * { box-sizing: border-box; }
+
 body {
     margin: 0; padding: 0;
     background-color: #000;
     color: #fff;
-    font-family: 'Orbitron', sans-serif;
+    /* বাংলা লেখার জন্য ফন্ট ফিক্স */
+    font-family: 'Hind Siliguri', sans-serif;
+    /* হ্যাকার ব্যাকগ্রাউন্ড */
     background-image: linear-gradient(0deg, transparent 24%, rgba(0, 255, 0, .03) 25%, rgba(0, 255, 0, .03) 26%, transparent 27%, transparent 74%, rgba(0, 255, 0, .03) 75%, rgba(0, 255, 0, .03) 76%, transparent 77%, transparent), linear-gradient(90deg, transparent 24%, rgba(0, 255, 0, .03) 25%, rgba(0, 255, 0, .03) 26%, transparent 27%, transparent 74%, rgba(0, 255, 0, .03) 75%, rgba(0, 255, 0, .03) 76%, transparent 77%, transparent);
     background-size: 50px 50px;
 }
@@ -18,10 +21,13 @@ body {
     min-height: 100vh;
 }
 
+/* ইংরেজি হেডলাইনের জন্য স্পেশাল ফন্ট */
 .neon-text {
+    font-family: 'Orbitron', sans-serif;
     color: #fff;
     text-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 20px #00d4ff, 0 0 30px #00d4ff;
     margin-bottom: 5px;
+    letter-spacing: 1px;
 }
 
 .input-group {
@@ -34,13 +40,15 @@ body {
     align-items: center;
 }
 .input-group i { color: #00d4ff; margin-right: 10px; }
+
 input, select {
     background: transparent;
     border: none;
     color: #fff;
     width: 100%;
     outline: none;
-    font-family: inherit;
+    font-family: 'Hind Siliguri', sans-serif;
+    font-size: 16px;
 }
 option { background: #000; color: white; }
 
@@ -52,6 +60,7 @@ option { background: #000; color: white; }
     width: 100%;
     color: white;
     border-radius: 5px;
+    font-family: 'Hind Siliguri', sans-serif;
 }
 
 .btn-primary {
@@ -65,7 +74,8 @@ option { background: #000; color: white; }
     cursor: pointer;
     margin-top: 15px;
     box-shadow: 0 0 10px #00d4ff;
-    font-family: inherit;
+    font-family: 'Hind Siliguri', sans-serif;
+    font-size: 16px;
 }
 
 .header {
@@ -77,11 +87,8 @@ option { background: #000; color: white; }
     border: 1px solid #333;
     margin-bottom: 20px;
 }
-.profile-pic {
-    font-size: 30px;
-    margin-right: 15px;
-    color: #00d4ff;
-}
+.profile-pic { font-size: 30px; margin-right: 15px; color: #00d4ff; }
+
 .balance-badge {
     background: #222;
     padding: 5px 10px;
@@ -91,6 +98,7 @@ option { background: #000; color: white; }
     font-size: 14px;
     margin-top: 5px;
     display: inline-block;
+    font-family: 'Orbitron', sans-serif;
 }
 
 .grid-menu {
@@ -108,7 +116,7 @@ option { background: #000; color: white; }
 }
 .card:active { transform: scale(0.95); border-color: #00d4ff; }
 .card i { font-size: 20px; margin-bottom: 8px; display: block; }
-.card p { margin: 0; font-size: 12px; }
+.card p { margin: 0; font-size: 13px; font-weight: 600; }
 
 .color-cyan { color: #00d4ff; }
 .color-purple { color: #d000ff; }
@@ -129,6 +137,7 @@ option { background: #000; color: white; }
     text-align: left;
     box-shadow: 0 0 5px rgba(0, 212, 255, 0.2);
 }
+
 .history-card {
     background: #111;
     border: 1px solid #333;
