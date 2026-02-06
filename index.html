@@ -92,7 +92,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 
     <script>
-        // ⚠️⚠️⚠️ আপনার Firebase Config এখানে বসান ⚠️⚠️⚠️
+        // ⚠️ আপনার Firebase Config নিচে বসান ⚠️
         const firebaseConfig = {
             apiKey: "AIzaSyDjQ0LB1J1MeAFyPOdA9sCkYiPYaT4rXEg",
             authDomain: "free-traffic-b363b.firebaseapp.com",
@@ -104,11 +104,20 @@
             measurementId: "G-LMVTZKVNJZ"
         };
         
-        // Firebase ইনিশিয়ালাইজেশন
         if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
         const db = firebase.database();
         let currentUser = null;
+
+        // --- রেফারেল ট্র্যাকিং (Link Catching) ---
+        window.onload = function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const refID = urlParams.get('ref');
+            if (refID) {
+                // ব্রাউজারে রেফারার আইডি সেভ করে রাখা হচ্ছে
+                sessionStorage.setItem('referrer', refID);
+            }
+        };
 
         // --- IP বের করা ---
         async function getIP() {
@@ -126,7 +135,7 @@
             document.getElementById(view + '-form').classList.remove('hidden');
         }
 
-        // --- রেজিস্ট্রেশন ---
+        // --- রেজিস্ট্রেশন (রেফার বোনাস সহ) ---
         async function handleRegister() {
             const email = document.getElementById('regEmail').value;
             const pass = document.getElementById('regPass').value;
@@ -143,13 +152,24 @@
                 } else {
                     auth.createUserWithEmailAndPassword(email, pass).then(c => {
                         const uid = c.user.uid;
+                        
+                        // রেফার বোনাস লজিক
+                        const referrer = sessionStorage.getItem('referrer');
+                        if(referrer && referrer !== uid) {
+                            // রেফারারকে ২৫ কয়েন দেওয়া হচ্ছে
+                            db.ref('users/' + referrer + '/balance').transaction(bal => (bal || 0) + 25);
+                        }
+
+                        // নতুন ইউজারের ডাটা সেভ
                         db.ref('users/' + uid).set({
                             email: email,
                             balance: 0,
                             uid: uid,
                             ip: ip,
-                            lastBonus: 0
+                            lastBonus: 0,
+                            referredBy: referrer || 'none'
                         });
+                        
                         db.ref('ips/' + ip).set(uid);
                         Swal.fire('Success', 'একাউন্ট খোলা হয়েছে!', 'success');
                     }).catch(e => Swal.fire('Error', e.message, 'error'));
@@ -170,14 +190,12 @@
                 .catch(e => Swal.fire('Error', 'ভুল তথ্য!', 'error'));
         }
 
-        // --- অথেন্টিকেশন চেকার ---
         auth.onAuthStateChanged(user => {
             if (user) {
                 currentUser = user;
                 document.getElementById('auth-section').style.display = 'none';
                 document.getElementById('dashboard-section').classList.remove('hidden');
                 
-                // ব্যালেন্স লোড (নাম্বার হিসেবে)
                 db.ref('users/' + user.uid).on('value', s => {
                     const d = s.val();
                     if(d) {
@@ -201,14 +219,26 @@
             else if(name === 'myads') loadMyAds(body);
             else if(name === 'sendmoney') loadSendMoney(body);
             else if(name === 'profile') {
-                body.innerHTML = `<h3>প্রোফাইল</h3><p>${currentUser.email}</p><button onclick="auth.signOut()" class="btn-primary" style="background:red">লগআউট</button>`;
+                // প্রোফাইলে রেফার লিংক দেখানো
+                const refLink = window.location.href.split('?')[0] + '?ref=' + currentUser.uid;
+                
+                body.innerHTML = `
+                    <h3>প্রোফাইল</h3>
+                    <p>${currentUser.email}</p>
+                    
+                    <div style="background:#111; padding:10px; margin:10px 0; border-radius:5px;">
+                        <small style="color:#aaa">আপনার রেফার লিংক (২৫ কয়েন/রেফার):</small>
+                        <input type="text" value="${refLink}" class="input-full" style="font-size:12px; text-align:center;" readonly onclick="this.select(); document.execCommand('copy'); Swal.fire('কপি হয়েছে!', '', 'success')">
+                        <p style="font-size:10px; color:yellow;">লিংকে ক্লিক করে কপি করুন</p>
+                    </div>
+
+                    <button onclick="auth.signOut()" class="btn-primary" style="background:red">লগআউট</button>
+                `;
             }
         }
         function closeContent() { document.getElementById('content-area').classList.add('hidden'); }
 
-        // ============================================
-        // ১. এক্সচেঞ্জ (টাস্ক সিস্টেম) - ১ বার দেখার লজিক সহ
-        // ============================================
+        // --- এক্সচেঞ্জ সিস্টেম ---
         function loadExchange(c) {
             c.innerHTML = `
                 <h3 class="neon-text">ট্রাফিক এক্সচেঞ্জ</h3>
@@ -236,12 +266,9 @@
                     const task = child.val();
                     const taskId = child.key;
                     const rem = parseInt(task.remaining);
-                    
-                    // ১ বার দেখার চেক
                     const viewedBy = task.viewedBy || {};
                     const hasSeen = viewedBy.hasOwnProperty(currentUser.uid);
 
-                    // লজিক: টার্গেট > ০, নিজের অ্যাড নয়, ক্যাটাগরি ঠিক আছে, আগে দেখেনি
                     if(rem > 0 && task.owner !== currentUser.uid && (task.type || 'Direct Link') === cat && !hasSeen) {
                         const reward = task.duration / 10;
                         html += `
@@ -258,17 +285,14 @@
             });
         }
 
-        // --- টাস্ক শুরু ---
-        function startTask(id, url, time, reward) {
-            window.open(url, '_blank'); // লিংক ওপেন
-            
-            // টাইমার সেটআপ (ব্যাকগ্রাউন্ড সাপোর্টেড)
-            const endTime = Date.now() + (time * 1000);
+        function startTask(taskId, url, duration, reward) {
+            window.open(url, '_blank'); 
+            const endTime = Date.now() + (duration * 1000);
             let timerInterval;
 
             Swal.fire({
                 title: 'অপেক্ষা করুন',
-                html: `সময় বাকি: <b id="timer-display">${time}</b> সেকেন্ড`,
+                html: `সময় বাকি: <b id="timer-display">${duration}</b> সেকেন্ড`,
                 allowOutsideClick: false,
                 showConfirmButton: false,
                 didOpen: () => {
@@ -280,7 +304,7 @@
                         if(remaining <= 0) {
                             clearInterval(timerInterval);
                             Swal.close();
-                            completeTask(id, reward); // ফিনিশ
+                            completeTask(taskId, reward); 
                         }
                     }, 1000);
                 },
@@ -288,27 +312,20 @@
             });
         }
 
-        // --- টাস্ক কমপ্লিট ---
-        function completeTask(id, reward) {
+        function completeTask(taskId, reward) {
             const userRef = db.ref('users/' + currentUser.uid);
             userRef.once('value', s => {
                 const curBal = parseFloat(s.val().balance) || 0;
-                
                 userRef.update({ balance: curBal + parseFloat(reward) }).then(() => {
-                    
-                    // টাস্ক আপডেট (কমানো + দেখা মার্ক করা)
-                    const taskRef = db.ref('tasks/' + id);
-                    taskRef.child('remaining').transaction(r => (r > 0 ? r - 1 : 0));
+                    const taskRef = db.ref('tasks/' + taskId);
+                    taskRef.child('remaining').transaction(rem => (rem > 0 ? rem - 1 : 0));
                     taskRef.child('viewedBy').child(currentUser.uid).set(true);
-
                     Swal.fire({icon: 'success', title: 'অভিনন্দন!', text: `${reward} কয়েন যুক্ত হয়েছে`, timer: 2000});
                 });
             });
         }
 
-        // ============================================
-        // ২. অ্যাড দেওয়া
-        // ============================================
+        // --- মাই অ্যাডস ---
         function loadMyAds(c) {
             c.innerHTML = `
                 <h3>নতুন বিজ্ঞাপন</h3>
@@ -332,7 +349,6 @@
                 <input type="number" id="adTarget" placeholder="কত ভিউ লাগবে?" class="input-full" onkeyup="calcCost()">
                 <p id="costDisplay" style="color:yellow; text-align:center; font-size:12px">খরচ: 0.00</p>
                 <button onclick="postAd()" class="btn-primary">পাবলিশ করুন</button>
-                
                 <hr style="border-color:#333; margin:20px 0;">
                 <h3>হিস্ট্রি</h3>
                 <div id="historyList">লোড হচ্ছে...</div>
@@ -351,16 +367,11 @@
                         const rem = parseInt(t.remaining);
                         const done = init - rem;
                         const isDone = rem <= 0;
-
                         html += `
                         <div class="history-card">
-                            <span class="status-badge ${isDone?'status-done':'status-active'}">
-                                ${isDone ? 'COMPLETED' : 'RUNNING'}
-                            </span>
+                            <span class="status-badge ${isDone?'status-done':'status-active'}">${isDone ? 'COMPLETED' : 'RUNNING'}</span>
                             <span class="progress-text">ভিউ: ${done}/${init}</span>
-                            <div style="margin-top:5px; overflow:hidden; text-overflow:ellipsis; color:#00d4ff; font-size:12px;">
-                                <i class="fas fa-link"></i> ${t.url}
-                            </div>
+                            <div style="margin-top:5px; overflow:hidden; text-overflow:ellipsis; color:#00d4ff; font-size:12px;"><i class="fas fa-link"></i> ${t.url}</div>
                         </div>`;
                     });
                 }
@@ -389,13 +400,7 @@
                 if(bal >= cost) {
                     db.ref('users/' + currentUser.uid + '/balance').set(bal - cost);
                     db.ref('tasks').push({
-                        owner: currentUser.uid,
-                        url: url,
-                        duration: time,
-                        remaining: target,
-                        initialTarget: target,
-                        type: type,
-                        viewedBy: {}
+                        owner: currentUser.uid, url, duration: time, remaining: target, initialTarget: target, type, viewedBy: {}
                     });
                     Swal.fire('Success', 'বিজ্ঞাপন চালু হয়েছে!', 'success');
                 } else {
