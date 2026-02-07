@@ -53,7 +53,7 @@
                 <i class="fas fa-user-astronaut"></i>
             </div>
             <div class="user-info" style="text-align: left;">
-                <h3 id="user-name" style="margin:0; font-family:'Orbitron', sans-serif;">User</h3>
+                <h3 id="user-name" style="margin:0;">User</h3>
                 <span style="font-size:10px; color:#00ff88;">● অনলাইন</span><br>
                 <div class="balance-badge">🪙 <span id="user-balance">0.00</span></div>
             </div>
@@ -92,7 +92,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 
     <script>
-        // ⚠️ আপনার Firebase Config নিচে বসান ⚠️
+        // ⚠️⚠️⚠️ আপনার Firebase Config এখানে বসান ⚠️⚠️⚠️
         const firebaseConfig = {
             apiKey: "AIzaSyDjQ0LB1J1MeAFyPOdA9sCkYiPYaT4rXEg",
             authDomain: "free-traffic-b363b.firebaseapp.com",
@@ -104,20 +104,19 @@
             measurementId: "G-LMVTZKVNJZ"
         };
         
+        // Firebase ইনিশিয়ালাইজেশন
         if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
         const db = firebase.database();
         let currentUser = null;
 
-        // --- রেফারেল ট্র্যাকিং (Link Catching) ---
-        window.onload = function() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const refID = urlParams.get('ref');
-            if (refID) {
-                // ব্রাউজারে রেফারার আইডি সেভ করে রাখা হচ্ছে
-                sessionStorage.setItem('referrer', refID);
-            }
-        };
+        // --- রেফারেল ট্র্যাকিং (URL থেকে ref কোড নেওয়া) ---
+        // কেউ যদি ?ref=SOME_ID দিয়ে ঢুকে, সেটা sessionStorage এ সেভ থাকবে
+        const urlParams = new URLSearchParams(window.location.search);
+        const refParam = urlParams.get('ref');
+        if(refParam) {
+            sessionStorage.setItem('referralID', refParam);
+        }
 
         // --- IP বের করা ---
         async function getIP() {
@@ -135,10 +134,12 @@
             document.getElementById(view + '-form').classList.remove('hidden');
         }
 
-        // --- রেজিস্ট্রেশন (রেফার বোনাস সহ) ---
+        // --- রেজিস্ট্রেশন ও রেফার বোনাস ---
         async function handleRegister() {
             const email = document.getElementById('regEmail').value;
             const pass = document.getElementById('regPass').value;
+            // সেশন থেকে রেফারার আইডি বের করা
+            const referrerID = sessionStorage.getItem('referralID'); 
             
             if(!email || !pass) return Swal.fire('Error', 'সব তথ্য দিন', 'error');
             if(pass.length < 6) return Swal.fire('Error', 'পাসওয়ার্ড ছোট', 'warning');
@@ -148,18 +149,11 @@
 
             db.ref('ips/' + ip).once('value', s => {
                 if (s.exists()) {
-                    Swal.fire('Error', 'এই ডিভাইসে একাউন্ট আছে!', 'error');
+                    Swal.fire('Error', 'এই ডিভাইসে ইতিমধ্যেই একাউন্ট আছে!', 'error');
                 } else {
                     auth.createUserWithEmailAndPassword(email, pass).then(c => {
                         const uid = c.user.uid;
                         
-                        // রেফার বোনাস লজিক
-                        const referrer = sessionStorage.getItem('referrer');
-                        if(referrer && referrer !== uid) {
-                            // রেফারারকে ২৫ কয়েন দেওয়া হচ্ছে
-                            db.ref('users/' + referrer + '/balance').transaction(bal => (bal || 0) + 25);
-                        }
-
                         // নতুন ইউজারের ডাটা সেভ
                         db.ref('users/' + uid).set({
                             email: email,
@@ -167,10 +161,25 @@
                             uid: uid,
                             ip: ip,
                             lastBonus: 0,
-                            referredBy: referrer || 'none'
+                            referredBy: referrerID || 'none'
                         });
-                        
+
+                        // আইপি লক করা
                         db.ref('ips/' + ip).set(uid);
+
+                        // --- রেফার বোনাস দেওয়ার লজিক ---
+                        if (referrerID && referrerID !== uid) {
+                            db.ref('users/' + referrerID).once('value', refSnap => {
+                                if (refSnap.exists()) {
+                                    const oldBalance = parseFloat(refSnap.val().balance) || 0;
+                                    // রেফারারকে ২৫ কয়েন দেওয়া হচ্ছে
+                                    db.ref('users/' + referrerID).update({
+                                        balance: oldBalance + 25
+                                    });
+                                }
+                            });
+                        }
+
                         Swal.fire('Success', 'একাউন্ট খোলা হয়েছে!', 'success');
                     }).catch(e => Swal.fire('Error', e.message, 'error'));
                 }
@@ -190,6 +199,7 @@
                 .catch(e => Swal.fire('Error', 'ভুল তথ্য!', 'error'));
         }
 
+        // --- অথেন্টিকেশন চেকার ---
         auth.onAuthStateChanged(user => {
             if (user) {
                 currentUser = user;
@@ -218,27 +228,47 @@
             if(name === 'exchange') loadExchange(body);
             else if(name === 'myads') loadMyAds(body);
             else if(name === 'sendmoney') loadSendMoney(body);
-            else if(name === 'profile') {
-                // প্রোফাইলে রেফার লিংক দেখানো
-                const refLink = window.location.href.split('?')[0] + '?ref=' + currentUser.uid;
-                
-                body.innerHTML = `
-                    <h3>প্রোফাইল</h3>
-                    <p>${currentUser.email}</p>
-                    
-                    <div style="background:#111; padding:10px; margin:10px 0; border-radius:5px;">
-                        <small style="color:#aaa">আপনার রেফার লিংক (২৫ কয়েন/রেফার):</small>
-                        <input type="text" value="${refLink}" class="input-full" style="font-size:12px; text-align:center;" readonly onclick="this.select(); document.execCommand('copy'); Swal.fire('কপি হয়েছে!', '', 'success')">
-                        <p style="font-size:10px; color:yellow;">লিংকে ক্লিক করে কপি করুন</p>
-                    </div>
-
-                    <button onclick="auth.signOut()" class="btn-primary" style="background:red">লগআউট</button>
-                `;
-            }
+            else if(name === 'profile') loadProfile(body);
         }
         function closeContent() { document.getElementById('content-area').classList.add('hidden'); }
 
-        // --- এক্সচেঞ্জ সিস্টেম ---
+        // ============================================
+        // প্রোফাইল ও রেফার লিংক শো করা
+        // ============================================
+        function loadProfile(c) {
+            // রেফারেল লিংক তৈরি (বর্তমান URL + ?ref=UID)
+            const baseUrl = window.location.href.split('?')[0];
+            const myRefLink = `${baseUrl}?ref=${currentUser.uid}`;
+
+            c.innerHTML = `
+                <h3 class="neon-text">প্রোফাইল</h3>
+                <div style="text-align:center; padding:10px;">
+                    <i class="fas fa-user-circle" style="font-size:50px; color:#00d4ff;"></i>
+                    <p style="color:white; margin-top:10px;">${currentUser.email}</p>
+                    <small>UID: ${currentUser.uid}</small>
+                </div>
+                
+                <div style="background:#222; padding:15px; border-radius:10px; margin-top:20px; border:1px solid #444;">
+                    <p style="color:#d000ff; margin-bottom:5px; font-weight:bold;">আপনার রেফারেল লিংক (২৫ কয়েন বোনাস)</p>
+                    <input type="text" value="${myRefLink}" id="refLinkInput" class="input-full" style="text-align:center; font-size:12px;" readonly>
+                    <button onclick="copyRefLink()" class="btn-primary" style="margin-top:5px; background:linear-gradient(45deg, #ff00cc, #333399);">লিংক কপি করুন</button>
+                </div>
+
+                <br><br>
+                <button onclick="auth.signOut()" class="btn-primary" style="background:red">লগআউট</button>
+            `;
+        }
+
+        function copyRefLink() {
+            const copyText = document.getElementById("refLinkInput");
+            copyText.select();
+            document.execCommand("copy");
+            Swal.fire('Success', 'লিংক কপি করা হয়েছে! বন্ধুদের সাথে শেয়ার করুন।', 'success');
+        }
+
+        // ============================================
+        // ১. এক্সচেঞ্জ (টাস্ক সিস্টেম) - ১ বার দেখার লজিক সহ
+        // ============================================
         function loadExchange(c) {
             c.innerHTML = `
                 <h3 class="neon-text">ট্রাফিক এক্সচেঞ্জ</h3>
@@ -266,6 +296,7 @@
                     const task = child.val();
                     const taskId = child.key;
                     const rem = parseInt(task.remaining);
+                    
                     const viewedBy = task.viewedBy || {};
                     const hasSeen = viewedBy.hasOwnProperty(currentUser.uid);
 
@@ -285,14 +316,16 @@
             });
         }
 
-        function startTask(taskId, url, duration, reward) {
+        // --- টাস্ক শুরু ---
+        function startTask(id, url, time, reward) {
             window.open(url, '_blank'); 
-            const endTime = Date.now() + (duration * 1000);
+            
+            const endTime = Date.now() + (time * 1000);
             let timerInterval;
 
             Swal.fire({
                 title: 'অপেক্ষা করুন',
-                html: `সময় বাকি: <b id="timer-display">${duration}</b> সেকেন্ড`,
+                html: `সময় বাকি: <b id="timer-display">${time}</b> সেকেন্ড`,
                 allowOutsideClick: false,
                 showConfirmButton: false,
                 didOpen: () => {
@@ -304,7 +337,7 @@
                         if(remaining <= 0) {
                             clearInterval(timerInterval);
                             Swal.close();
-                            completeTask(taskId, reward); 
+                            completeTask(id, reward);
                         }
                     }, 1000);
                 },
@@ -312,20 +345,25 @@
             });
         }
 
-        function completeTask(taskId, reward) {
+        // --- টাস্ক কমপ্লিট ---
+        function completeTask(id, reward) {
             const userRef = db.ref('users/' + currentUser.uid);
             userRef.once('value', s => {
                 const curBal = parseFloat(s.val().balance) || 0;
+                
                 userRef.update({ balance: curBal + parseFloat(reward) }).then(() => {
-                    const taskRef = db.ref('tasks/' + taskId);
-                    taskRef.child('remaining').transaction(rem => (rem > 0 ? rem - 1 : 0));
+                    const taskRef = db.ref('tasks/' + id);
+                    taskRef.child('remaining').transaction(r => (r > 0 ? r - 1 : 0));
                     taskRef.child('viewedBy').child(currentUser.uid).set(true);
+
                     Swal.fire({icon: 'success', title: 'অভিনন্দন!', text: `${reward} কয়েন যুক্ত হয়েছে`, timer: 2000});
                 });
             });
         }
 
-        // --- মাই অ্যাডস ---
+        // ============================================
+        // ২. অ্যাড দেওয়া
+        // ============================================
         function loadMyAds(c) {
             c.innerHTML = `
                 <h3>নতুন বিজ্ঞাপন</h3>
@@ -349,6 +387,7 @@
                 <input type="number" id="adTarget" placeholder="কত ভিউ লাগবে?" class="input-full" onkeyup="calcCost()">
                 <p id="costDisplay" style="color:yellow; text-align:center; font-size:12px">খরচ: 0.00</p>
                 <button onclick="postAd()" class="btn-primary">পাবলিশ করুন</button>
+                
                 <hr style="border-color:#333; margin:20px 0;">
                 <h3>হিস্ট্রি</h3>
                 <div id="historyList">লোড হচ্ছে...</div>
@@ -367,11 +406,16 @@
                         const rem = parseInt(t.remaining);
                         const done = init - rem;
                         const isDone = rem <= 0;
+
                         html += `
                         <div class="history-card">
-                            <span class="status-badge ${isDone?'status-done':'status-active'}">${isDone ? 'COMPLETED' : 'RUNNING'}</span>
+                            <span class="status-badge ${isDone?'status-done':'status-active'}">
+                                ${isDone ? 'COMPLETED' : 'RUNNING'}
+                            </span>
                             <span class="progress-text">ভিউ: ${done}/${init}</span>
-                            <div style="margin-top:5px; overflow:hidden; text-overflow:ellipsis; color:#00d4ff; font-size:12px;"><i class="fas fa-link"></i> ${t.url}</div>
+                            <div style="margin-top:5px; overflow:hidden; text-overflow:ellipsis; color:#00d4ff; font-size:12px;">
+                                <i class="fas fa-link"></i> ${t.url}
+                            </div>
                         </div>`;
                     });
                 }
@@ -400,7 +444,13 @@
                 if(bal >= cost) {
                     db.ref('users/' + currentUser.uid + '/balance').set(bal - cost);
                     db.ref('tasks').push({
-                        owner: currentUser.uid, url, duration: time, remaining: target, initialTarget: target, type, viewedBy: {}
+                        owner: currentUser.uid,
+                        url: url,
+                        duration: time,
+                        remaining: target,
+                        initialTarget: target,
+                        type: type,
+                        viewedBy: {}
                     });
                     Swal.fire('Success', 'বিজ্ঞাপন চালু হয়েছে!', 'success');
                 } else {
