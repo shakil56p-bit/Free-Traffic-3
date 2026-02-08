@@ -111,7 +111,6 @@
         let currentUser = null;
 
         // --- রেফারেল ট্র্যাকিং (URL থেকে ref কোড নেওয়া) ---
-        // কেউ যদি ?ref=SOME_ID দিয়ে ঢুকে, সেটা sessionStorage এ সেভ থাকবে
         const urlParams = new URLSearchParams(window.location.search);
         const refParam = urlParams.get('ref');
         if(refParam) {
@@ -138,7 +137,6 @@
         async function handleRegister() {
             const email = document.getElementById('regEmail').value;
             const pass = document.getElementById('regPass').value;
-            // সেশন থেকে রেফারার আইডি বের করা
             const referrerID = sessionStorage.getItem('referralID'); 
             
             if(!email || !pass) return Swal.fire('Error', 'সব তথ্য দিন', 'error');
@@ -154,7 +152,6 @@
                     auth.createUserWithEmailAndPassword(email, pass).then(c => {
                         const uid = c.user.uid;
                         
-                        // নতুন ইউজারের ডাটা সেভ
                         db.ref('users/' + uid).set({
                             email: email,
                             balance: 0,
@@ -164,15 +161,12 @@
                             referredBy: referrerID || 'none'
                         });
 
-                        // আইপি লক করা
                         db.ref('ips/' + ip).set(uid);
 
-                        // --- রেফার বোনাস দেওয়ার লজিক ---
                         if (referrerID && referrerID !== uid) {
                             db.ref('users/' + referrerID).once('value', refSnap => {
                                 if (refSnap.exists()) {
                                     const oldBalance = parseFloat(refSnap.val().balance) || 0;
-                                    // রেফারারকে ২৫ কয়েন দেওয়া হচ্ছে
                                     db.ref('users/' + referrerID).update({
                                         balance: oldBalance + 25
                                     });
@@ -233,10 +227,9 @@
         function closeContent() { document.getElementById('content-area').classList.add('hidden'); }
 
         // ============================================
-        // প্রোফাইল ও রেফার লিংক শো করা
+        // প্রোফাইল
         // ============================================
         function loadProfile(c) {
-            // রেফারেল লিংক তৈরি (বর্তমান URL + ?ref=UID)
             const baseUrl = window.location.href.split('?')[0];
             const myRefLink = `${baseUrl}?ref=${currentUser.uid}`;
 
@@ -267,7 +260,7 @@
         }
 
         // ============================================
-        // ১. এক্সচেঞ্জ (টাস্ক সিস্টেম) - ১ বার দেখার লজিক সহ
+        // ১. এক্সচেঞ্জ (টাস্ক সিস্টেম)
         // ============================================
         function loadExchange(c) {
             c.innerHTML = `
@@ -362,7 +355,7 @@
         }
 
         // ============================================
-        // ২. অ্যাড দেওয়া
+        // ২. অ্যাড দেওয়া (হিস্ট্রি আপডেট সহ)
         // ============================================
         function loadMyAds(c) {
             c.innerHTML = `
@@ -389,37 +382,72 @@
                 <button onclick="postAd()" class="btn-primary">পাবলিশ করুন</button>
                 
                 <hr style="border-color:#333; margin:20px 0;">
-                <h3>হিস্ট্রি</h3>
+                <h3 style="margin-bottom:15px;">আমার বিজ্ঞাপন হিস্ট্রি</h3>
                 <div id="historyList">লোড হচ্ছে...</div>
             `;
             loadHistory();
         }
 
+        // ============================================
+        // আপডেট করা হিস্ট্রি ফাংশন
+        // ============================================
         function loadHistory() {
+            const list = document.getElementById('historyList');
+            
             db.ref('tasks').orderByChild('owner').equalTo(currentUser.uid).on('value', snap => {
                 let html = '';
                 if(snap.exists()) {
-                    const arr = [];
-                    snap.forEach(c => arr.push(c.val()));
-                    arr.reverse().forEach(t => {
-                        const init = parseInt(t.initialTarget || t.remaining);
+                    const tasks = [];
+                    snap.forEach(c => tasks.push(c.val()));
+                    
+                    // নতুন অ্যাড সবার উপরে দেখানোর জন্য রিভার্স
+                    tasks.reverse().forEach(t => {
+                        const init = parseInt(t.initialTarget) || parseInt(t.remaining); // Fallback
                         const rem = parseInt(t.remaining);
-                        const done = init - rem;
+                        const viewed = init - rem;
                         const isDone = rem <= 0;
+                        const percent = init > 0 ? Math.floor((viewed / init) * 100) : 0;
+
+                        // স্ট্যাটাস লজিক
+                        const statusBadge = isDone 
+                            ? '<span class="status-badge status-done">COMPLETED</span>' 
+                            : '<span class="status-badge status-active">RUNNING</span>';
 
                         html += `
                         <div class="history-card">
-                            <span class="status-badge ${isDone?'status-done':'status-active'}">
-                                ${isDone ? 'COMPLETED' : 'RUNNING'}
-                            </span>
-                            <span class="progress-text">ভিউ: ${done}/${init}</span>
-                            <div style="margin-top:5px; overflow:hidden; text-overflow:ellipsis; color:#00d4ff; font-size:12px;">
-                                <i class="fas fa-link"></i> ${t.url}
+                            <div class="h-top-row">
+                                ${statusBadge}
+                                <span style="font-size:10px; color:#aaa; border:1px solid #333; padding:2px 5px; border-radius:3px;">${t.type || 'Direct'}</span>
                             </div>
+                            
+                            <div class="h-url-box">
+                                <i class="fas fa-link" style="color:#00d4ff; margin-right:5px;"></i> 
+                                ${t.url}
+                            </div>
+
+                            <div class="h-stats-grid">
+                                <div class="stat-box">
+                                    <small>টার্গেট</small>
+                                    <b>${init}</b>
+                                </div>
+                                <div class="stat-box" style="border-left:1px solid #222; border-right:1px solid #222;">
+                                    <small>ভিউ হয়েছে</small>
+                                    <b style="color:#00ff88;">${viewed}</b>
+                                </div>
+                                <div class="stat-box">
+                                    <small>বাকি</small>
+                                    <b style="color:#ff0055;">${rem}</b>
+                                </div>
+                            </div>
+
+                            <div class="h-progress-bg">
+                                <div class="h-progress-fill" style="width: ${percent}%; background: ${isDone ? '#444' : '#00d4ff'};"></div>
+                            </div>
+                            <div style="text-align:right; font-size:10px; color:#666; margin-top:3px;">${percent}% সম্পন্ন</div>
                         </div>`;
                     });
                 }
-                document.getElementById('historyList').innerHTML = html || '<p style="text-align:center">কোনো হিস্ট্রি নেই।</p>';
+                list.innerHTML = html || '<p style="text-align:center; color:#555;">কোনো বিজ্ঞাপন নেই।</p>';
             });
         }
 
@@ -448,7 +476,7 @@
                         url: url,
                         duration: time,
                         remaining: target,
-                        initialTarget: target,
+                        initialTarget: target, // টার্গেট সেভ করা হচ্ছে হিস্ট্রির জন্য
                         type: type,
                         viewedBy: {}
                     });
